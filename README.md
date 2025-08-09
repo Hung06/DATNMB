@@ -1,50 +1,158 @@
-# Welcome to your Expo app 👋
+# 🚗 DATNMB - Ứng dụng đỗ xe thông minh
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Ứng dụng di động giúp người dùng tìm kiếm, đặt chỗ và thanh toán cho bãi đỗ xe một cách thông minh và tiện lợi.
 
-## Get started
+## ✨ Tính năng chính
 
-1. Install dependencies
+- 🔍 **Tìm kiếm bãi đỗ xe** theo vị trí hiện tại
+- 📍 **Chỉ đường** đến bãi đỗ xe được chọn
+- 🎯 **Đặt chỗ** cho từng vị trí cụ thể
+- 💳 **Thanh toán** tiền cọc qua QR code
+- 👤 **Quản lý profile** người dùng
+- 🔐 **Đăng nhập/Đăng ký** với Google hoặc email
+- 📱 **Giao diện thân thiện** trên React Native
 
-   ```bash
-   npm install
-   ```
+## 🛠️ Công nghệ sử dụng
 
-2. Start the app
+### Frontend
+- **React Native** với Expo
+- **TypeScript** cho type safety
+- **Expo Router** cho navigation
+- **Google Sign-In** cho authentication
+- **AsyncStorage** cho local storage
 
-   ```bash
-   npx expo start
-   ```
+### Backend
+- **Node.js** với Express
+- **MySQL** database
+- **JWT** authentication
+- **Google OAuth** integration
+- **bcrypt** cho password hashing
 
-In the output, you'll find options to open the app in a
+## 🚀 Cài đặt và chạy
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+### Yêu cầu hệ thống
+- Node.js 16+
+- npm hoặc yarn
+- Expo CLI
+- MySQL database
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
+### Backend
 ```bash
-npm run reset-project
+cd backend
+npm install
+npm start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### Frontend
+```bash
+cd frontend
+npm install
+npx expo start
+```
 
-## Learn more
+## 📱 Cấu trúc project
 
-To learn more about developing your project with Expo, look at the following resources:
+```
+DATNMB/
+├── backend/                 # Backend Node.js/Express
+│   ├── controllers/        # Business logic
+│   ├── models/            # Database models
+│   ├── routes/            # API routes
+│   ├── middlewares/       # Authentication & validation
+│   └── config/            # Database & environment config
+├── frontend/               # React Native app
+│   ├── app/               # App screens & navigation
+│   ├── assets/            # Images, fonts, etc.
+│   └── components/        # Reusable components
+└── README.md
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## 🔧 Cấu hình
 
-## Join the community
+### Backend Environment Variables
+Tạo file `.env` trong thư mục `backend`:
+```env
+DB_HOST=localhost
+DB_USER=your_username
+DB_PASSWORD=your_password
+DB_NAME=your_database
+JWT_SECRET=your_jwt_secret
+GOOGLE_CLIENT_ID=your_google_client_id
+```
 
-Join our community of developers creating universal apps.
+### Frontend Configuration
+Cập nhật `BASE_URL` trong các file API calls:
+```typescript
+const BASE_URL = 'http://your_backend_ip:5000';
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## 📊 Database Schema
+
+### Users
+- `user_id` (Primary Key)
+- `full_name`
+- `email`
+- `phone`
+- `license_plate`
+- `role`
+- `created_at`
+
+### Parking Lots
+- `parking_lot_id` (Primary Key)
+- `name`
+- `address`
+- `latitude`
+- `longitude`
+- `total_spots`
+- `hourly_rate`
+
+### Parking Spots
+- `spot_id` (Primary Key)
+- `parking_lot_id` (Foreign Key)
+- `spot_number`
+- `is_occupied`
+- `is_reserved`
+
+### Reservations
+- `reservation_id` (Primary Key)
+- `user_id` (Foreign Key)
+- `spot_id` (Foreign Key)
+- `start_time`
+- `end_time`
+- `status`
+
+## 🔐 Authentication Flow
+
+1. **Đăng nhập** với email/password hoặc Google
+2. **JWT token** được tạo và lưu locally
+3. **Profile check** - nếu cần cập nhật thông tin
+4. **Navigation** đến main app hoặc profile update
+
+## 📱 Screens
+
+- **Login/Register** - Đăng nhập và đăng ký
+- **Home** - Danh sách bãi đỗ xe gần nhất
+- **Explore** - Bản đồ và chỉ đường
+- **Parking Lot Detail** - Chi tiết bãi đỗ và đặt chỗ
+- **Payment** - Thanh toán tiền cọc
+- **Profile** - Quản lý thông tin cá nhân
+
+## 🤝 Đóng góp
+
+1. Fork project
+2. Tạo feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to branch (`git push origin feature/AmazingFeature`)
+5. Tạo Pull Request
+
+## 📄 License
+
+Project này được phát triển cho mục đích học tập và nghiên cứu.
+
+## 👨‍💻 Tác giả
+
+**Phi Hùng** - [GitHub](https://github.com/Hung06)
+
+---
+
+⭐ Nếu project này hữu ích, hãy cho một star nhé!
