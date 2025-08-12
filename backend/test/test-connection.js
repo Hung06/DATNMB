@@ -2,10 +2,10 @@ const axios = require('axios');
 
 const testConnection = async () => {
   const urls = [
-    'http://localhost:5000/api/parking-lots',
-    'http://192.168.0.104:5000/api/parking-lots',
-    'http://127.0.0.1:5000/api/parking-lots'
-  ];
+  'http://localhost:5000/api/parking-lots',
+  'http://192.168.0.101:5000/api/parking-lots',
+  'http://127.0.0.1:5000/api/parking-lots'
+];
 
   console.log('🧪 Testing connection to backend...\n');
 
