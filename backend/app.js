@@ -1775,7 +1775,7 @@ app.post('/api/payment/success', async (req, res) => {
           reservation_id: reservationId,
           parking_log_id: parkingLog.log_id,
           status: 'confirmed',
-          payment_amount: 0, // Default value since column doesn't exist
+          payment_amount: 10000, // Phí đặt chỗ: 10,000 VNĐ
           payment_method: paymentMethod
         },
         status: 'ok'
@@ -1909,8 +1909,8 @@ app.get('/api/payment/:reservationId', async (req, res) => {
         message: 'Payment information retrieved successfully',
         data: {
           reservation_id: reservation.reservation_id,
-          payment_amount: 0, // Default value since column doesn't exist
-          payment_qr_code: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=PAYMENT_${reservation.reservation_id}_0`,
+          payment_amount: 10000, // Phí đặt chỗ: 10,000 VNĐ
+          payment_qr_code: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=PAYMENT_${reservation.reservation_id}_10000`,
           spot_number: reservation.parking_spots?.spot_number,
           parking_lot_name: reservation.parking_spots?.parking_lots?.name,
           parking_lot_address: reservation.parking_spots?.parking_lots?.address,
@@ -2077,6 +2077,8 @@ app.get('/api/user/history', async (req, res) => {
           expected_start,
           expected_end,
           status,
+          payment_amount,
+          payment_time,
           parking_spots (
             spot_number,
             parking_lots (
@@ -2111,6 +2113,8 @@ app.get('/api/user/history', async (req, res) => {
           total_minutes,
           fee,
           status,
+          payment_status,
+          payment_time,
           parking_spots (
             spot_number,
             parking_lots (
@@ -2141,8 +2145,8 @@ app.get('/api/user/history', async (req, res) => {
         expected_start: reservation.expected_start,
         expected_end: reservation.expected_end,
         status: reservation.status,
-        payment_amount: 0, // Default value since column doesn't exist
-        payment_time: null, // Default value since column doesn't exist
+        payment_amount: reservation.payment_amount || 0,
+        payment_time: reservation.payment_time || null,
         spot_number: reservation.parking_spots?.spot_number,
         parking_lot: reservation.parking_spots?.parking_lots ? {
           id: reservation.parking_spots.parking_lots.lot_id,
