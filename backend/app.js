@@ -1775,7 +1775,7 @@ app.post('/api/payment/success', async (req, res) => {
           reservation_id: reservationId,
           parking_log_id: parkingLog.log_id,
           status: 'confirmed',
-          payment_amount: reservation.payment_amount,
+          payment_amount: 0, // Default value since column doesn't exist
           payment_method: paymentMethod
         },
         status: 'ok'
@@ -1909,8 +1909,8 @@ app.get('/api/payment/:reservationId', async (req, res) => {
         message: 'Payment information retrieved successfully',
         data: {
           reservation_id: reservation.reservation_id,
-          payment_amount: reservation.payment_amount,
-          payment_qr_code: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=PAYMENT_${reservation.reservation_id}_${reservation.payment_amount}`,
+          payment_amount: 0, // Default value since column doesn't exist
+          payment_qr_code: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=PAYMENT_${reservation.reservation_id}_0`,
           spot_number: reservation.parking_spots?.spot_number,
           parking_lot_name: reservation.parking_spots?.parking_lots?.name,
           parking_lot_address: reservation.parking_spots?.parking_lots?.address,

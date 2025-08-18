@@ -35,13 +35,13 @@ function makeRequest(url, method = 'GET', data = null) {
   });
 }
 
-async function testFixPaymentAPI() {
+async function testHistoryAPI() {
   try {
-    console.log('🧪 Testing fix payment API...');
+    console.log('🧪 Testing history API...');
     
     const result = await makeRequest(
-      'https://backend-kuk0oeeeh-hungs-projects-420012d8.vercel.app/api/fix-payment-data',
-      'POST'
+      'https://backend-61dp6dosq-hungs-projects-420012d8.vercel.app/api/user/history?userId=14',
+      'GET'
     );
     
     console.log('📊 Response status:', result.status);
@@ -58,4 +58,4 @@ async function testFixPaymentAPI() {
   }
 }
 
-testFixPaymentAPI();
+testHistoryAPI();
