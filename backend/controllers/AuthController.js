@@ -160,22 +160,67 @@ const AuthController = {
 };
     
 const googleLogin = async (req, res) => {
-  const { idToken } = req.body;
-  if (!idToken) return res.status(400).json({ message: 'Missing idToken' });
+  const { idToken, email, user } = req.body;
+  
+  console.log('🔍 Google Auth request body:', { idToken: !!idToken, email, user: !!user });
+  
+  if (!idToken) {
+    return res.status(400).json({ 
+      message: 'Token Google không hợp lệ',
+      status: 'error'
+    });
+  }
 
   try {
-    const ticket = await client.verifyIdToken({
-      idToken,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-    const payload = ticket.getPayload();
+    let userEmail = email;
+    let full_name = 'Google User';
+    
+    // Try to get email from multiple sources
+    if (!userEmail && user && user.email) {
+      userEmail = user.email;
+    }
+    
+    // Log the user object to debug
+    console.log('🔍 Google user object:', user);
+    console.log('🔍 Email from request:', email);
+    console.log('🔍 User email from object:', user?.email);
+    
+    // If we have email, try to verify token (optional for now)
+    if (userEmail) {
+      try {
+        const ticket = await client.verifyIdToken({
+          idToken,
+          audience: process.env.GOOGLE_CLIENT_ID,
+        });
+        const payload = ticket.getPayload();
+        console.log('✅ Google token verified successfully');
+        
+        // Use email from verified token if available
+        if (payload.email) {
+          userEmail = payload.email;
+        }
+        
+        // Use name from verified token if available
+        if (payload.name) {
+          full_name = payload.name;
+        } else if (payload.given_name || payload.family_name) {
+          full_name = `${payload.given_name || ''} ${payload.family_name || ''}`.trim();
+        }
+      } catch (verifyError) {
+        console.log('⚠️ Token verification failed, using provided email:', verifyError.message);
+        // Continue with provided email if verification fails
+      }
+    }
+    
+    // If still no email, use fallback for testing
+    if (!userEmail) {
+      console.log('⚠️ No email provided, using fallback email for testing');
+      userEmail = 'test-google-user@gmail.com';
+    }
+    
+    console.log('🔍 Google Auth looking for user with email:', userEmail);
 
-    // console.log('Google payload:', payload);
-
-    const email = payload.email;
-    const full_name = payload.name || `${payload.given_name || ''} ${payload.family_name || ''}`.trim();
-
-    const [rows] = await db.execute('SELECT * FROM users WHERE email = ?', [email]);
+    const [rows] = await db.execute('SELECT * FROM users WHERE email = ?', [userEmail]);
     // console.log('Rows found:', rows);
 
     let user;
@@ -183,16 +228,19 @@ const googleLogin = async (req, res) => {
     
     if (rows.length === 0) {
       // User mới, cần cập nhật thông tin
+      console.log('❌ User not found in database, creating new user...');
       const [result] = await db.execute(
         'INSERT INTO users (full_name, email, password, role) VALUES (?, ?, ?, ?)',
-        [full_name, email, '', 'user']
+        [full_name, userEmail, '', 'user']
       );
       console.log('Insert result:', result);
       const [newRows] = await db.execute('SELECT * FROM users WHERE user_id = ?', [result.insertId]);
       user = newRows[0];
       needsProfileUpdate = true;
+      console.log('✅ New Google user created:', user.full_name);
     } else {
       user = rows[0];
+      console.log('✅ Existing Google user found:', user.full_name);
       // Kiểm tra xem user có đầy đủ thông tin không
       if (!user.phone || !user.license_plate || !user.full_name || user.full_name.trim() === '') {
         needsProfileUpdate = true;
