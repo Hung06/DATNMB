@@ -2077,8 +2077,6 @@ app.get('/api/user/history', async (req, res) => {
           expected_start,
           expected_end,
           status,
-          payment_amount,
-          payment_time,
           parking_spots (
             spot_number,
             parking_lots (
@@ -2113,8 +2111,6 @@ app.get('/api/user/history', async (req, res) => {
           total_minutes,
           fee,
           status,
-          payment_status,
-          payment_time,
           parking_spots (
             spot_number,
             parking_lots (
@@ -2145,8 +2141,8 @@ app.get('/api/user/history', async (req, res) => {
         expected_start: reservation.expected_start,
         expected_end: reservation.expected_end,
         status: reservation.status,
-        payment_amount: reservation.payment_amount,
-        payment_time: reservation.payment_time,
+        payment_amount: 0, // Default value since column doesn't exist
+        payment_time: null, // Default value since column doesn't exist
         spot_number: reservation.parking_spots?.spot_number,
         parking_lot: reservation.parking_spots?.parking_lots ? {
           id: reservation.parking_spots.parking_lots.lot_id,
