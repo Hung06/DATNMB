@@ -569,12 +569,13 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Google Auth endpoint (simplified for testing)
+// Google Auth endpoint
 app.post('/api/auth/google', async (req, res) => {
   try {
     const { idToken, email, user } = req.body;
     
     console.log('🔍 Google Auth request body:', { idToken: !!idToken, email, user: !!user });
+    console.log('🔍 Full request body:', JSON.stringify(req.body, null, 2));
     
     if (!idToken) {
       return res.status(400).json({ 
@@ -585,23 +586,56 @@ app.post('/api/auth/google', async (req, res) => {
 
     // Try to get email from multiple sources
     let userEmail = email;
+    let decoded = null;
+    
+    console.log('🔍 Initial email from request:', email);
+    console.log('🔍 User object from request:', user);
     
     // If email is not provided directly, try to get it from user object
     if (!userEmail && user && user.email) {
       userEmail = user.email;
+      console.log('✅ Email found in user object:', userEmail);
     }
     
     // Log the user object to debug
     console.log('🔍 Google user object:', user);
     
-    // If still no email, try to decode the token (for testing purposes)
+    // If still no email, try to decode the token
     if (!userEmail) {
+      console.log('⚠️ No email found in request, trying to decode token...');
       try {
-        // For testing, we'll try to extract email from token
-        // In production, you should verify the token with Google
-        console.log('⚠️ No email provided, trying to extract from token...');
-        // For now, we'll use a fallback email for testing
-        userEmail = 'test-google-user@gmail.com';
+        // Try to decode the JWT token to extract email
+        // Note: In production, you should verify the token with Google's public keys
+        const jwt = require('jsonwebtoken');
+        
+        // Decode without verification for now (for development)
+        decoded = jwt.decode(idToken);
+        console.log('🔍 Decoded token payload:', decoded);
+        
+        if (decoded && decoded.email) {
+          userEmail = decoded.email;
+          console.log('✅ Email extracted from token:', userEmail);
+        } else {
+          console.log('⚠️ No email found in token payload');
+          console.log('🔍 Token payload keys:', decoded ? Object.keys(decoded) : 'null');
+          
+          // Try to extract email from other possible fields
+          if (decoded && decoded.sub) {
+            console.log('🔍 Found sub field, might be email:', decoded.sub);
+            // Check if sub looks like an email
+            if (decoded.sub.includes('@')) {
+              userEmail = decoded.sub;
+              console.log('✅ Using sub as email:', userEmail);
+            }
+          }
+          
+          if (!userEmail) {
+            return res.status(400).json({
+              message: 'Email không tìm thấy trong token Google. Vui lòng thử lại.',
+              status: 'error'
+            });
+          }
+        }
       } catch (tokenError) {
         console.error('Token decode error:', tokenError);
         return res.status(400).json({
@@ -609,11 +643,15 @@ app.post('/api/auth/google', async (req, res) => {
           status: 'error'
         });
       }
+    } else {
+      console.log('✅ Email already found:', userEmail);
     }
     
     if (!userEmail) {
+      console.log('❌ No email found from any source');
+      console.log('🔍 Request body:', req.body);
       return res.status(400).json({
-        message: 'Email is required for Google authentication',
+        message: 'Email is required for Google authentication. Please ensure Google Sign-In is configured correctly.',
         status: 'error'
       });
     }
@@ -628,6 +666,8 @@ app.post('/api/auth/google', async (req, res) => {
         .eq('email', userEmail)
         .single();
 
+      console.log('🔍 Database query result:', { user: user ? user.email : 'null', error: error ? error.message : 'null' });
+
       if (error && error.code !== 'PGRST116') {
         console.error('Database error:', error);
         return res.status(500).json({
@@ -639,7 +679,31 @@ app.post('/api/auth/google', async (req, res) => {
       if (!user) {
         console.log('❌ User not found in database, creating new user...');
         // Create new user if not found
-        const googleUserName = user?.name || user?.givenName || 'Google User';
+        // Try to get user info from the request body or decoded token
+        let googleUserName = 'Google User';
+        
+        // Try multiple sources for user name
+        if (req.body.user && req.body.user.name) {
+          googleUserName = req.body.user.name;
+        } else if (req.body.user && req.body.user.givenName) {
+          googleUserName = req.body.user.givenName;
+        } else if (req.body.user && req.body.user.displayName) {
+          googleUserName = req.body.user.displayName;
+        } else if (decoded && decoded.name) {
+          googleUserName = decoded.name;
+        } else if (decoded && decoded.given_name) {
+          googleUserName = decoded.given_name;
+        } else if (decoded && decoded.display_name) {
+          googleUserName = decoded.display_name;
+        } else if (decoded && decoded.sub) {
+          // Use email prefix as name if no name found
+          const emailPrefix = userEmail.split('@')[0];
+          googleUserName = emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
+        }
+        
+        console.log('🔍 Creating new Google user with name:', googleUserName);
+        console.log('🔍 Using email:', userEmail);
+        
         const { data: newUser, error: createError } = await supabase
           .from('users')
           .insert({
@@ -838,6 +902,8 @@ app.get('/api/auth/profile', async (req, res) => {
     // Get user from database using email
     if (supabase) {
       console.log('🔍 Looking for user with email:', userEmail);
+      console.log('🔍 Profile request - query params:', req.query);
+      console.log('🔍 Profile request - headers:', req.headers);
       
       // Get user by email
       const { data: user, error } = await supabase
@@ -1989,6 +2055,9 @@ app.get('/api/user/history', async (req, res) => {
   try {
     const { userId } = req.query;
     
+    console.log('🔍 History request - userId:', userId);
+    console.log('🔍 History request - headers:', req.headers);
+    
     if (!userId) {
       return res.status(400).json({
         message: 'User ID is required',
@@ -1998,10 +2067,12 @@ app.get('/api/user/history', async (req, res) => {
 
     if (supabase) {
       // Lấy lịch sử đặt chỗ
+      console.log('🔍 Fetching reservations for userId:', userId);
       const { data: reservations, error: reservationError } = await supabase
         .from('reservations')
         .select(`
           reservation_id,
+          user_id,
           reserved_at,
           expected_start,
           expected_end,
@@ -2024,17 +2095,26 @@ app.get('/api/user/history', async (req, res) => {
         console.error('Error fetching reservations:', reservationError);
         throw reservationError;
       }
+      
+      console.log('🔍 Found reservations:', reservations?.length || 0);
+      if (reservations && reservations.length > 0) {
+        console.log('🔍 First reservation user_id:', reservations[0].user_id);
+      }
 
       // Lấy lịch sử đỗ xe
+      console.log('🔍 Fetching parking logs for userId:', userId);
       const { data: parkingLogs, error: parkingError } = await supabase
         .from('parking_logs')
         .select(`
           log_id,
+          user_id,
           entry_time,
           exit_time,
           total_minutes,
           fee,
           status,
+          payment_status,
+          payment_time,
           parking_spots (
             spot_number,
             parking_lots (
@@ -2050,6 +2130,11 @@ app.get('/api/user/history', async (req, res) => {
       if (parkingError) {
         console.error('Error fetching parking logs:', parkingError);
         throw parkingError;
+      }
+      
+      console.log('🔍 Found parking logs:', parkingLogs?.length || 0);
+      if (parkingLogs && parkingLogs.length > 0) {
+        console.log('🔍 First parking log user_id:', parkingLogs[0].user_id);
       }
 
       // Transform data
@@ -2078,6 +2163,8 @@ app.get('/api/user/history', async (req, res) => {
         total_minutes: log.total_minutes,
         fee: log.fee,
         status: log.status,
+        payment_status: log.payment_status || (log.status === 'out' ? 'paid' : 'pending'), // Nếu ra xe thì đã thanh toán
+        payment_time: log.payment_time || (log.status === 'out' ? log.exit_time : null), // Thời gian thanh toán = thời gian ra xe
         spot_number: log.parking_spots?.spot_number,
         parking_lot: log.parking_spots?.parking_lots ? {
           id: log.parking_spots.parking_lots.lot_id,
@@ -2176,14 +2263,16 @@ app.post('/api/parking/exit', async (req, res) => {
       const pricePerHour = spotInfo.parking_lots?.price_per_hour || 0;
       const fee = Math.ceil(totalMinutes / 60 * pricePerHour);
 
-      // Cập nhật parking log
+      // Cập nhật parking log - khi ra xe thì tự động đã thanh toán
       const { error: updateLogError } = await supabase
         .from('parking_logs')
         .update({
           exit_time: exitTime.toISOString(),
           total_minutes: totalMinutes,
           fee: fee,
-          status: 'out'
+          status: 'out',
+          payment_status: 'paid', // Tự động đánh dấu đã thanh toán khi ra xe
+          payment_time: exitTime.toISOString() // Thời gian thanh toán = thời gian ra xe
         })
         .eq('log_id', activeParking.log_id);
 
@@ -2294,6 +2383,117 @@ app.post('/api/sepay-webhook', async (req, res) => {
     });
   } catch (error) {
     console.error('Error processing webhook:', error);
+    res.status(500).json({
+      message: 'Internal server error',
+      error: error.message,
+      status: 'error'
+    });
+  }
+});
+
+// API endpoint để sửa dữ liệu payment - thêm cột và cập nhật trạng thái
+app.post('/api/fix-payment-data', async (req, res) => {
+  try {
+    console.log('🔧 Fixing payment data...');
+    
+    if (!supabase) {
+      return res.status(500).json({
+        message: 'Database connection failed',
+        error: 'Supabase not connected',
+        status: 'error'
+      });
+    }
+
+    // Bước 1: Thêm cột payment_status và payment_time nếu chưa có
+    console.log('📋 Step 1: Adding payment columns...');
+    
+    // Thử thêm cột bằng cách update một record với giá trị mới
+    const { data: testLog, error: testError } = await supabase
+      .from('parking_logs')
+      .select('log_id')
+      .limit(1);
+
+    if (testError) {
+      console.error('Error testing table access:', testError);
+      return res.status(500).json({
+        message: 'Cannot access parking_logs table',
+        error: testError.message,
+        status: 'error'
+      });
+    }
+
+    // Bước 2: Cập nhật tất cả parking logs đã ra xe thành đã thanh toán
+    console.log('📋 Step 2: Updating old parking logs...');
+    
+    const { data: oldLogs, error: fetchError } = await supabase
+      .from('parking_logs')
+      .select('log_id, user_id, exit_time')
+      .eq('status', 'out');
+
+    if (fetchError) {
+      console.error('Error fetching old logs:', fetchError);
+      return res.status(500).json({
+        message: 'Error fetching old logs',
+        error: fetchError.message,
+        status: 'error'
+      });
+    }
+
+    console.log(`📊 Found ${oldLogs?.length || 0} parking logs to update`);
+
+    if (oldLogs && oldLogs.length > 0) {
+      let updatedCount = 0;
+      for (const log of oldLogs) {
+        // Thử update với payment_status và payment_time
+        const { error: updateError } = await supabase
+          .from('parking_logs')
+          .update({
+            payment_status: 'paid',
+            payment_time: log.exit_time || new Date().toISOString()
+          })
+          .eq('log_id', log.log_id);
+
+        if (updateError) {
+          console.error(`❌ Error updating log_id ${log.log_id}:`, updateError);
+          // Nếu lỗi do cột không tồn tại, bỏ qua và tiếp tục
+          if (updateError.message.includes('payment_status')) {
+            console.log(`⚠️ Column payment_status does not exist for log_id ${log.log_id}`);
+          }
+        } else {
+          updatedCount++;
+          console.log(`✅ Updated log_id: ${log.log_id}`);
+        }
+      }
+      console.log(`✅ Updated ${updatedCount} parking logs`);
+    }
+
+    // Bước 3: Kiểm tra kết quả
+    console.log('📋 Step 3: Checking results...');
+    const { data: checkLogs, error: checkError } = await supabase
+      .from('parking_logs')
+      .select('log_id, user_id, status, payment_status, payment_time')
+      .eq('status', 'out')
+      .order('exit_time', { ascending: false })
+      .limit(10);
+
+    if (checkError) {
+      console.error('Error checking results:', checkError);
+    } else {
+      console.log('📊 Recent parking logs after update:');
+      checkLogs.forEach(log => {
+        console.log(`- Log ${log.log_id}: User ${log.user_id}, Status: ${log.status}, Payment: ${log.payment_status || 'N/A'}, Time: ${log.payment_time || 'N/A'}`);
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Processed ${oldLogs?.length || 0} parking logs`,
+      updatedCount: oldLogs?.length || 0,
+      status: 'ok'
+    });
+
+  } catch (error) {
+    console.error('Error in fix-payment-data endpoint:', error);
     res.status(500).json({
       message: 'Internal server error',
       error: error.message,

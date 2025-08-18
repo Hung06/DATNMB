@@ -160,9 +160,9 @@ const AuthController = {
 };
     
 const googleLogin = async (req, res) => {
-  const { idToken, email, user } = req.body;
+  const { idToken, email, user: googleUser } = req.body;
   
-  console.log('🔍 Google Auth request body:', { idToken: !!idToken, email, user: !!user });
+  console.log('🔍 Google Auth request body:', { idToken: !!idToken, email, user: !!googleUser });
   
   if (!idToken) {
     return res.status(400).json({ 
@@ -176,14 +176,14 @@ const googleLogin = async (req, res) => {
     let full_name = 'Google User';
     
     // Try to get email from multiple sources
-    if (!userEmail && user && user.email) {
-      userEmail = user.email;
+    if (!userEmail && googleUser && googleUser.email) {
+      userEmail = googleUser.email;
     }
     
     // Log the user object to debug
-    console.log('🔍 Google user object:', user);
+    console.log('🔍 Google user object:', googleUser);
     console.log('🔍 Email from request:', email);
-    console.log('🔍 User email from object:', user?.email);
+    console.log('🔍 User email from object:', googleUser?.email);
     
     // If we have email, try to verify token (optional for now)
     if (userEmail) {
@@ -205,6 +205,8 @@ const googleLogin = async (req, res) => {
           full_name = payload.name;
         } else if (payload.given_name || payload.family_name) {
           full_name = `${payload.given_name || ''} ${payload.family_name || ''}`.trim();
+        } else if (googleUser?.name || googleUser?.givenName || googleUser?.familyName) {
+          full_name = googleUser?.name || googleUser?.givenName || googleUser?.familyName;
         }
       } catch (verifyError) {
         console.log('⚠️ Token verification failed, using provided email:', verifyError.message);
@@ -212,10 +214,10 @@ const googleLogin = async (req, res) => {
       }
     }
     
-    // If still no email, use fallback for testing
+    // If still no email, return error
     if (!userEmail) {
-      console.log('⚠️ No email provided, using fallback email for testing');
-      userEmail = 'test-google-user@gmail.com';
+      console.log('❌ No email provided in Google Auth request');
+      return res.status(400).json({ message: 'Email không được cung cấp từ Google', status: 'error' });
     }
     
     console.log('🔍 Google Auth looking for user with email:', userEmail);
@@ -223,7 +225,7 @@ const googleLogin = async (req, res) => {
     const [rows] = await db.execute('SELECT * FROM users WHERE email = ?', [userEmail]);
     // console.log('Rows found:', rows);
 
-    let user;
+    let dbUser;
     let needsProfileUpdate = false;
     
     if (rows.length === 0) {
@@ -235,37 +237,37 @@ const googleLogin = async (req, res) => {
       );
       console.log('Insert result:', result);
       const [newRows] = await db.execute('SELECT * FROM users WHERE user_id = ?', [result.insertId]);
-      user = newRows[0];
+      dbUser = newRows[0];
       needsProfileUpdate = true;
-      console.log('✅ New Google user created:', user.full_name);
+      console.log('✅ New Google user created:', dbUser.full_name);
     } else {
-      user = rows[0];
-      console.log('✅ Existing Google user found:', user.full_name);
+      dbUser = rows[0];
+      console.log('✅ Existing Google user found:', dbUser.full_name);
       // Kiểm tra xem user có đầy đủ thông tin không
-      if (!user.phone || !user.license_plate || !user.full_name || user.full_name.trim() === '') {
+      if (!dbUser.phone || !dbUser.license_plate || !dbUser.full_name || dbUser.full_name.trim() === '') {
         needsProfileUpdate = true;
       }
     }
 
-    console.log('User to respond:', user);
+    console.log('User to respond:', dbUser);
 
     const token = jwt.sign({
-      user_id: user.user_id,
-      email: user.email,
-      role: user.role,
+      user_id: dbUser.user_id,
+      email: dbUser.email,
+      role: dbUser.role,
     }, process.env.JWT_SECRET, { expiresIn: '1d' });
     console.log('Sending token to frontend:', token);
 
     res.json({ 
       token, 
       user: {
-        user_id: user.user_id,
-        full_name: user.full_name,
-        email: user.email,
-        phone: user.phone || '',
-        license_plate: user.license_plate || '',
-        role: user.role,
-        created_at: user.created_at,
+        user_id: dbUser.user_id,
+        full_name: dbUser.full_name,
+        email: dbUser.email,
+        phone: dbUser.phone || '',
+        license_plate: dbUser.license_plate || '',
+        role: dbUser.role,
+        created_at: dbUser.created_at,
       },
       needsProfileUpdate 
     });
