@@ -12,7 +12,6 @@ class ParkingLot {
         pl.longitude,
         pl.total_spots as totalSpots,
         CAST(pl.price_per_hour AS UNSIGNED) as pricePerHour,
-        COUNT(ps.spot_id) as totalSpots,
         SUM(CASE WHEN ps.is_occupied = 0 AND ps.is_reserved = 0 THEN 1 ELSE 0 END) as availableSpots,
         u.full_name as managerName
       FROM parking_lots pl
@@ -41,7 +40,6 @@ class ParkingLot {
         pl.longitude,
         pl.total_spots as totalSpots,
         CAST(pl.price_per_hour AS UNSIGNED) as pricePerHour,
-        COUNT(ps.spot_id) as totalSpots,
         SUM(CASE WHEN ps.is_occupied = 0 AND ps.is_reserved = 0 THEN 1 ELSE 0 END) as availableSpots,
         u.full_name as managerName
       FROM parking_lots pl
@@ -70,7 +68,6 @@ class ParkingLot {
         pl.longitude,
         pl.total_spots as totalSpots,
         CAST(pl.price_per_hour AS UNSIGNED) as pricePerHour,
-        COUNT(ps.spot_id) as totalSpots,
         SUM(CASE WHEN ps.is_occupied = 0 AND ps.is_reserved = 0 THEN 1 ELSE 0 END) as availableSpots,
         u.full_name as managerName,
         (
@@ -107,7 +104,6 @@ class ParkingLot {
         pl.longitude,
         pl.total_spots as totalSpots,
         CAST(pl.price_per_hour AS UNSIGNED) as pricePerHour,
-        COUNT(ps.spot_id) as totalSpots,
         SUM(CASE WHEN ps.is_occupied = 0 AND ps.is_reserved = 0 THEN 1 ELSE 0 END) as availableSpots,
         u.full_name as managerName
       FROM parking_lots pl

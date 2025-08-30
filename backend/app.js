@@ -5,6 +5,18 @@ const jwt = require('jsonwebtoken');
 
 const app = express();
 
+// Utility function để tạo thời gian chính xác cho database
+function getCurrentTimeForDB() {
+  const now = new Date();
+  // Format: YYYY-MM-DD HH:MM:SS (PostgreSQL compatible)
+  return now.toISOString().slice(0, 19).replace('T', ' ');
+}
+
+// Utility function để tạo timestamp ISO cho API responses
+function getCurrentTimestamp() {
+  return new Date().toISOString();
+}
+
 // Try to load environment variables
 let supabase = null;
 try {
@@ -33,7 +45,7 @@ app.get('/', (req, res) => {
   res.json({
     message: 'Parking API is working!',
     status: 'ok',
-    timestamp: new Date().toISOString(),
+    timestamp: getCurrentTimestamp(),
     database: supabase ? 'Supabase PostgreSQL' : 'Mock Data'
   });
 });
@@ -1127,7 +1139,7 @@ app.post('/api/reservations', async (req, res) => {
           {
             user_id: userId || 1,
             spot_id: parkingSpotId,
-            reserved_at: new Date().toISOString(),
+            reserved_at: getCurrentTimeForDB(),
             expected_start: startTime,
             expected_end: endTime,
             status: 'pending'
@@ -1147,7 +1159,7 @@ app.post('/api/reservations', async (req, res) => {
         .update({
           is_reserved: true,
           reserved_by: userId,
-          updated_at: new Date().toISOString()
+          updated_at: getCurrentTimeForDB()
         })
         .eq('spot_id', parkingSpotId);
 
@@ -1623,7 +1635,7 @@ app.post('/api/reservations/create', async (req, res) => {
         .insert({
           user_id: userId,
           spot_id: spotId,
-          reserved_at: new Date().toISOString(),
+          reserved_at: getCurrentTimeForDB(),
           expected_start: expectedStart,
           expected_end: expectedEnd,
           status: 'pending',
@@ -1643,7 +1655,7 @@ app.post('/api/reservations/create', async (req, res) => {
         .update({
           is_reserved: true,
           reserved_by: userId,
-          updated_at: new Date().toISOString()
+          updated_at: getCurrentTimeForDB()
         })
         .eq('spot_id', spotId);
 
@@ -1693,10 +1705,21 @@ app.post('/api/payment/success', async (req, res) => {
 
     if (supabase) {
       
-      // Kiểm tra đặt chỗ có tồn tại và thuộc về user không
+      // Kiểm tra đặt chỗ có tồn tại và thuộc về user không, lấy luôn thông tin giá
       const { data: reservation, error: reservationError } = await supabase
         .from('reservations')
-        .select('reservation_id, user_id, spot_id, status')
+        .select(`
+          reservation_id, 
+          user_id, 
+          spot_id, 
+          status,
+          parking_spots (
+            spot_id,
+            parking_lots (
+              price_per_hour
+            )
+          )
+        `)
         .eq('reservation_id', reservationId)
         .eq('user_id', userId)
         .single();
@@ -1720,13 +1743,44 @@ app.post('/api/payment/success', async (req, res) => {
         });
       }
 
+      // Lấy thông tin spot để lấy lot_id
+      const { data: spotData, error: spotError } = await supabase
+        .from('parking_spots')
+        .select('spot_id, lot_id')
+        .eq('spot_id', reservation.spot_id)
+        .single();
+
+      if (spotError) {
+        console.error('Error fetching spot data:', spotError);
+        // Dùng default price
+      }
+
+      let pricePerHour = 8000; // Default
+
+      if (spotData?.lot_id) {
+        // Query trực tiếp từ parking_lots
+        const { data: lotData, error: lotError } = await supabase
+          .from('parking_lots')
+          .select('price_per_hour')
+          .eq('lot_id', spotData.lot_id)
+          .single();
+
+        if (!lotError && lotData?.price_per_hour) {
+          pricePerHour = lotData.price_per_hour;
+          console.log('✅ Found price for lot', spotData.lot_id, ':', pricePerHour, 'VNĐ');
+        } else {
+          console.error('Error fetching lot pricing:', lotError);
+        }
+      }
+
       // Cập nhật trạng thái đặt chỗ thành confirmed
       const { error: updateReservationError } = await supabase
         .from('reservations')
         .update({
           status: 'confirmed',
           payment_method: paymentMethod,
-          payment_time: new Date().toISOString()
+          payment_time: getCurrentTimeForDB(),
+          payment_amount: pricePerHour // Phí đặt chỗ = giá 1 giờ đỗ xe
         })
         .eq('reservation_id', reservationId);
 
@@ -1742,7 +1796,7 @@ app.post('/api/payment/success', async (req, res) => {
         .insert({
           user_id: userId,
           spot_id: reservation.spot_id,
-          entry_time: new Date().toISOString(),
+          entry_time: getCurrentTimeForDB(),
           status: 'in',
           fee: 0 // Sẽ tính phí khi ra xe
         })
@@ -1761,7 +1815,7 @@ app.post('/api/payment/success', async (req, res) => {
           is_occupied: true,
           is_reserved: false,
           reserved_by: null,
-          updated_at: new Date().toISOString()
+          updated_at: getCurrentTimeForDB()
         })
         .eq('spot_id', reservation.spot_id);
 
@@ -1775,7 +1829,7 @@ app.post('/api/payment/success', async (req, res) => {
           reservation_id: reservationId,
           parking_log_id: parkingLog.log_id,
           status: 'confirmed',
-          payment_amount: 10000, // Phí đặt chỗ: 10,000 VNĐ
+          payment_amount: pricePerHour, // Phí đặt chỗ = giá 1 giờ đỗ xe
           payment_method: paymentMethod
         },
         status: 'ok'
@@ -1863,7 +1917,7 @@ app.get('/api/payment/:reservationId', async (req, res) => {
     }
 
     if (supabase) {
-      // Lấy thông tin đặt chỗ
+      // Lấy thông tin đặt chỗ và giá bãi đỗ xe
       const { data: reservation, error: reservationError } = await supabase
         .from('reservations')
         .select(`
@@ -1878,7 +1932,8 @@ app.get('/api/payment/:reservationId', async (req, res) => {
             spot_number,
             parking_lots (
               name,
-              address
+              address,
+              price_per_hour
             )
           )
         `)
@@ -1905,15 +1960,43 @@ app.get('/api/payment/:reservationId', async (req, res) => {
         });
       }
 
+      // Lấy thông tin spot và parking lot
+      const { data: spotData, error: spotError } = await supabase
+        .from('parking_spots')
+        .select('spot_id, spot_number, lot_id')
+        .eq('spot_id', reservation.spot_id)
+        .single();
+
+      if (spotError) {
+        console.error('Error fetching spot data:', spotError);
+        throw spotError;
+      }
+
+      // Query parking lot để lấy giá và thông tin
+      const { data: lotData, error: lotError } = await supabase
+        .from('parking_lots')
+        .select('lot_id, name, address, price_per_hour')
+        .eq('lot_id', spotData.lot_id)
+        .single();
+
+      if (lotError) {
+        console.error('Error fetching lot data:', lotError);
+        throw lotError;
+      }
+
+      // Lấy giá 1 giờ đỗ xe từ bãi đỗ xe
+      const pricePerHour = lotData.price_per_hour || 8000; // Default 8000 nếu không có
+
       res.json({
         message: 'Payment information retrieved successfully',
         data: {
           reservation_id: reservation.reservation_id,
-          payment_amount: 10000, // Phí đặt chỗ: 10,000 VNĐ
-          payment_qr_code: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=PAYMENT_${reservation.reservation_id}_10000`,
-          spot_number: reservation.parking_spots?.spot_number,
-          parking_lot_name: reservation.parking_spots?.parking_lots?.name,
-          parking_lot_address: reservation.parking_spots?.parking_lots?.address,
+          payment_amount: pricePerHour, // Phí đặt chỗ = giá 1 giờ đỗ xe
+          payment_qr_code: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=PAYMENT_${reservation.reservation_id}_${pricePerHour}`,
+          spot_number: spotData.spot_number,
+          parking_lot_name: lotData.name,
+          parking_lot_address: lotData.address,
+          price_per_hour: pricePerHour, // Thêm thông tin giá để frontend sử dụng
           expected_start: reservation.expected_start,
           expected_end: reservation.expected_end,
           test_payment_url: `/api/payment/test`
@@ -1983,7 +2066,7 @@ app.post('/api/reservations/:reservationId/confirm', async (req, res) => {
         .from('reservations')
         .update({
           status: 'confirmed',
-          payment_time: new Date().toISOString()
+          payment_time: getCurrentTimeForDB()
         })
         .eq('reservation_id', reservationId);
 
@@ -1998,7 +2081,7 @@ app.post('/api/reservations/:reservationId/confirm', async (req, res) => {
         .insert({
           user_id: userId,
           spot_id: reservation.spot_id,
-          entry_time: new Date().toISOString(),
+          entry_time: getCurrentTimeForDB(),
           status: 'in'
         })
         .select('log_id')
@@ -2016,7 +2099,7 @@ app.post('/api/reservations/:reservationId/confirm', async (req, res) => {
           is_occupied: true,
           is_reserved: false,
           reserved_by: null,
-          updated_at: new Date().toISOString()
+          updated_at: getCurrentTimeForDB()
         })
         .eq('spot_id', reservation.spot_id);
 
@@ -2207,6 +2290,109 @@ app.get('/api/user/history', async (req, res) => {
   }
 });
 
+// API sửa dữ liệu reservation (tạm thời)
+app.post('/api/fix-reservation/:reservationId', async (req, res) => {
+  try {
+    const { reservationId } = req.params;
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({
+        message: 'User ID is required',
+        status: 'error'
+      });
+    }
+
+    if (supabase) {
+      // Lấy thông tin reservation
+      const { data: reservation, error: reservationError } = await supabase
+        .from('reservations')
+        .select('reservation_id, user_id, spot_id, status, payment_amount')
+        .eq('reservation_id', reservationId)
+        .eq('user_id', userId)
+        .single();
+
+      if (reservationError) {
+        console.error('Error fetching reservation:', reservationError);
+        throw reservationError;
+      }
+
+      if (!reservation) {
+        return res.status(404).json({
+          message: 'Không tìm thấy đặt chỗ',
+          status: 'error'
+        });
+      }
+
+      // Lấy thông tin spot để lấy lot_id
+      const { data: spotData, error: spotError } = await supabase
+        .from('parking_spots')
+        .select('spot_id, lot_id')
+        .eq('spot_id', reservation.spot_id)
+        .single();
+
+      if (spotError) {
+        console.error('Error fetching spot data:', spotError);
+        throw spotError;
+      }
+
+      // Lấy giá từ parking lot
+      const { data: lotData, error: lotError } = await supabase
+        .from('parking_lots')
+        .select('price_per_hour')
+        .eq('lot_id', spotData.lot_id)
+        .single();
+
+      if (lotError) {
+        console.error('Error fetching lot data:', lotError);
+        throw lotError;
+      }
+
+      const correctPrice = lotData.price_per_hour || 8000;
+
+      // Cập nhật payment_amount
+      const { error: updateError } = await supabase
+        .from('reservations')
+        .update({
+          payment_amount: correctPrice,
+          status: 'confirmed',
+          payment_method: 'manual_fix',
+          payment_time: getCurrentTimeForDB()
+        })
+        .eq('reservation_id', reservationId);
+
+      if (updateError) {
+        console.error('Error updating reservation:', updateError);
+        throw updateError;
+      }
+
+      res.json({
+        message: 'Reservation data fixed successfully',
+        data: {
+          reservation_id: reservationId,
+          old_payment_amount: reservation.payment_amount,
+          new_payment_amount: correctPrice,
+          status: 'confirmed'
+        },
+        status: 'ok'
+      });
+    } else {
+      return res.status(500).json({
+        message: 'Database connection failed',
+        error: 'Supabase not connected',
+        status: 'error'
+      });
+    }
+  } catch (error) {
+    console.error('Error fixing reservation:', error);
+    res.status(500).json({
+      message: 'Internal server error',
+      error: error.message,
+      status: 'error'
+    });
+  }
+});
+
 // API kết thúc đỗ xe
 app.post('/api/parking/exit', async (req, res) => {
   try {
@@ -2267,12 +2453,12 @@ app.post('/api/parking/exit', async (req, res) => {
       const { error: updateLogError } = await supabase
         .from('parking_logs')
         .update({
-          exit_time: exitTime.toISOString(),
+          exit_time: getCurrentTimeForDB(),
           total_minutes: totalMinutes,
           fee: fee,
           status: 'out',
           payment_status: 'paid', // Tự động đánh dấu đã thanh toán khi ra xe
-          payment_time: exitTime.toISOString() // Thời gian thanh toán = thời gian ra xe
+          payment_time: getCurrentTimeForDB() // Thời gian thanh toán = thời gian ra xe
         })
         .eq('log_id', activeParking.log_id);
 
@@ -2288,7 +2474,7 @@ app.post('/api/parking/exit', async (req, res) => {
           is_occupied: false,
           is_reserved: false,
           reserved_by: null,
-          updated_at: new Date().toISOString()
+          updated_at: getCurrentTimeForDB()
         })
         .eq('spot_id', activeParking.spot_id);
 
@@ -2337,7 +2523,7 @@ app.post('/api/sepay-webhook', async (req, res) => {
         .update({
           is_reserved: true,
           reserved_by: userId,
-          updated_at: new Date().toISOString()
+          updated_at: getCurrentTimeForDB()
         })
         .eq('spot_id', spotId);
 
@@ -2351,7 +2537,7 @@ app.post('/api/sepay-webhook', async (req, res) => {
         .update({
           status: 'confirmed',
           payment_amount: amount,
-          payment_time: new Date().toISOString()
+          payment_time: getCurrentTimeForDB()
         })
         .eq('reservation_id', reservationId);
 
@@ -2365,7 +2551,7 @@ app.post('/api/sepay-webhook', async (req, res) => {
         .insert([{
           user_id: userId,
           spot_id: spotId,
-          entry_time: new Date().toISOString(),
+          entry_time: getCurrentTimeForDB(),
           status: 'in',
           fee: amount
         }]);
@@ -2449,7 +2635,7 @@ app.post('/api/fix-payment-data', async (req, res) => {
           .from('parking_logs')
           .update({
             payment_status: 'paid',
-            payment_time: log.exit_time || new Date().toISOString()
+            payment_time: log.exit_time || getCurrentTimestamp()
           })
           .eq('log_id', log.log_id);
 
