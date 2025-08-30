@@ -12,7 +12,7 @@ class ParkingLot {
         pl.longitude,
         pl.total_spots as totalSpots,
         CAST(pl.price_per_hour AS UNSIGNED) as pricePerHour,
-        COALESCE(SUM(CASE WHEN ps.is_occupied = 0 AND ps.is_reserved = 0 THEN 1 ELSE 0 END), 0) as availableSpots,
+        COALESCE(SUM(CASE WHEN ps.is_occupied = false AND ps.is_reserved = false THEN 1 ELSE 0 END), 0) as availableSpots,
         u.full_name as managerName
       FROM parking_lots pl
       LEFT JOIN parking_spots ps ON pl.lot_id = ps.lot_id
@@ -40,7 +40,7 @@ class ParkingLot {
         pl.longitude,
         pl.total_spots as totalSpots,
         CAST(pl.price_per_hour AS UNSIGNED) as pricePerHour,
-        COALESCE(SUM(CASE WHEN ps.is_occupied = 0 AND ps.is_reserved = 0 THEN 1 ELSE 0 END), 0) as availableSpots,
+        COALESCE(SUM(CASE WHEN ps.is_occupied = false AND ps.is_reserved = false THEN 1 ELSE 0 END), 0) as availableSpots,
         u.full_name as managerName
       FROM parking_lots pl
       LEFT JOIN parking_spots ps ON pl.lot_id = ps.lot_id
@@ -68,7 +68,7 @@ class ParkingLot {
         pl.longitude,
         pl.total_spots as totalSpots,
         CAST(pl.price_per_hour AS UNSIGNED) as pricePerHour,
-        COALESCE(SUM(CASE WHEN ps.is_occupied = 0 AND ps.is_reserved = 0 THEN 1 ELSE 0 END), 0) as availableSpots,
+        COALESCE(SUM(CASE WHEN ps.is_occupied = false AND ps.is_reserved = false THEN 1 ELSE 0 END), 0) as availableSpots,
         u.full_name as managerName,
         (
           6371 * acos(
@@ -104,7 +104,7 @@ class ParkingLot {
         pl.longitude,
         pl.total_spots as totalSpots,
         CAST(pl.price_per_hour AS UNSIGNED) as pricePerHour,
-        COALESCE(SUM(CASE WHEN ps.is_occupied = 0 AND ps.is_reserved = 0 THEN 1 ELSE 0 END), 0) as availableSpots,
+        COALESCE(SUM(CASE WHEN ps.is_occupied = false AND ps.is_reserved = false THEN 1 ELSE 0 END), 0) as availableSpots,
         u.full_name as managerName
       FROM parking_lots pl
       LEFT JOIN parking_spots ps ON pl.lot_id = ps.lot_id
