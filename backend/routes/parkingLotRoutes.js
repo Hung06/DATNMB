@@ -7,6 +7,7 @@ const authMiddleware = require('../middlewares/authMiddleware');
 router.get('/parking-lots', ParkingLotController.getAllParkingLots);
 router.get('/parking-lots/search', ParkingLotController.searchParkingLots);
 router.get('/parking-lots/:id', ParkingLotController.getParkingLotById);
+router.get('/parking-lots/:id/debug', ParkingLotController.debugAvailableSpots);
 
 // Protected routes (cần authentication)
 router.post('/parking-lots', authMiddleware, ParkingLotController.createParkingLot);

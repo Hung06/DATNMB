@@ -158,3 +158,42 @@ exports.searchParkingLots = async (req, res) => {
     });
   }
 };
+
+// Debug endpoint để kiểm tra available spots calculation
+exports.debugAvailableSpots = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Lấy dữ liệu từ spots API
+    const ParkingSpot = require('../models/ParkingSpotModel');
+    const spots = await ParkingSpot.getByLotId(id);
+    
+    // Tính toán manual
+    const availableCount = spots.filter(spot => !spot.isOccupied && !spot.isReserved).length;
+    
+    // Lấy dữ liệu từ parking lot model
+    const parkingLot = await ParkingLot.getById(id);
+    
+    res.json({
+      success: true,
+      data: {
+        spotsData: spots,
+        manualAvailableCount: availableCount,
+        parkingLotData: parkingLot,
+        comparison: {
+          fromSpots: availableCount,
+          fromParkingLot: parkingLot?.availableSpots || 0,
+          match: availableCount === (parkingLot?.availableSpots || 0)
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('Lỗi debug:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      error: error.message
+    });
+  }
+};
