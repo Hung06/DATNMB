@@ -1,182 +1,272 @@
-const db = require('../config/database');
+// Try to load Supabase client
+let supabase = null;
+try {
+  const { createClient } = require('@supabase/supabase-js');
+  require('dotenv').config();
+  
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_ANON_KEY;
+  
+  if (supabaseUrl && supabaseKey) {
+    supabase = createClient(supabaseUrl, supabaseKey);
+  }
+} catch (error) {
+  console.log('Supabase not available for ParkingLogModel');
+}
 
 class ParkingLog {
   // Lấy lịch sử đỗ xe của một user
   static async getByUserId(userId) {
-    const query = `
-      SELECT 
-        pl.log_id,
-        pl.entry_time,
-        pl.exit_time,
-        pl.total_minutes,
-        pl.fee,
-        pl.status,
-        ps.spot_number,
-        pkl.name as parking_lot_name,
-        pkl.address as parking_lot_address,
-        p.payment_id,
-        p.amount as paid_amount,
-        p.method as payment_method,
-        p.paid_at
-      FROM parking_logs pl
-      LEFT JOIN parking_spots ps ON pl.spot_id = ps.spot_id
-      LEFT JOIN parking_lots pkl ON ps.lot_id = pkl.lot_id
-      LEFT JOIN payments p ON pl.log_id = p.log_id
-      WHERE pl.user_id = ?
-      ORDER BY pl.entry_time DESC
-    `;
+    if (!supabase) {
+      throw new Error('Supabase not connected');
+    }
     
-    try {
-      const [rows] = await db.execute(query, [userId]);
-      return rows;
-    } catch (error) {
+    const { data, error } = await supabase
+      .from('parking_logs')
+      .select(`
+        log_id,
+        entry_time,
+        exit_time,
+        total_minutes,
+        fee,
+        status,
+        parking_spots (
+          spot_number,
+          parking_lots (
+            name,
+            address
+          )
+        )
+      `)
+      .eq('user_id', userId)
+      .order('entry_time', { ascending: false });
+    
+    if (error) {
       throw error;
     }
+    
+    return data;
   }
 
   // Lấy chi tiết một log đỗ xe
   static async getById(logId) {
-    const query = `
-      SELECT 
-        pl.log_id,
-        pl.user_id,
-        pl.spot_id,
-        pl.entry_time,
-        pl.exit_time,
-        pl.total_minutes,
-        pl.fee,
-        pl.status,
-        ps.spot_number,
-        pkl.name as parking_lot_name,
-        pkl.address as parking_lot_address,
-        p.payment_id,
-        p.amount as paid_amount,
-        p.method as payment_method,
-        p.paid_at
-      FROM parking_logs pl
-      LEFT JOIN parking_spots ps ON pl.spot_id = ps.spot_id
-      LEFT JOIN parking_lots pkl ON ps.lot_id = pkl.lot_id
-      LEFT JOIN payments p ON pl.log_id = p.log_id
-      WHERE pl.log_id = ?
-    `;
+    if (!supabase) {
+      throw new Error('Supabase not connected');
+    }
     
-    try {
-      const [rows] = await db.execute(query, [logId]);
-      return rows[0];
-    } catch (error) {
+    const { data, error } = await supabase
+      .from('parking_logs')
+      .select(`
+        log_id,
+        user_id,
+        spot_id,
+        entry_time,
+        exit_time,
+        total_minutes,
+        fee,
+        status,
+        parking_spots (
+          spot_number,
+          parking_lots (
+            name,
+            address
+          )
+        )
+      `)
+      .eq('log_id', logId)
+      .single();
+    
+    if (error) {
       throw error;
     }
+    
+    return data;
   }
 
   // Tạo log đỗ xe mới (khi vào bãi)
   static async createEntry(userId, spotId) {
-    const query = `
-      INSERT INTO parking_logs (user_id, spot_id, entry_time, status)
-      VALUES (?, ?, NOW(), 'in')
-    `;
+    if (!supabase) {
+      throw new Error('Supabase not connected');
+    }
     
-    try {
-      const [result] = await db.execute(query, [userId, spotId]);
-      return result.insertId;
-    } catch (error) {
+    const { data, error } = await supabase
+      .from('parking_logs')
+      .insert({
+        user_id: userId,
+        spot_id: spotId,
+        entry_time: new Date().toISOString(),
+        status: 'in'
+      })
+      .select('log_id')
+      .single();
+    
+    if (error) {
       throw error;
     }
+    
+    return data.log_id;
   }
 
   // Cập nhật log khi ra bãi
   static async updateExit(logId, totalMinutes, fee) {
-    const query = `
-      UPDATE parking_logs 
-      SET exit_time = NOW(), 
-          total_minutes = ?, 
-          fee = ?, 
-          status = 'out'
-      WHERE log_id = ?
-    `;
+    if (!supabase) {
+      throw new Error('Supabase not connected');
+    }
     
-    try {
-      const [result] = await db.execute(query, [totalMinutes, fee, logId]);
-      return result.affectedRows > 0;
-    } catch (error) {
+    const { error } = await supabase
+      .from('parking_logs')
+      .update({
+        exit_time: new Date().toISOString(),
+        total_minutes: totalMinutes,
+        fee: fee,
+        status: 'out'
+      })
+      .eq('log_id', logId);
+    
+    if (error) {
       throw error;
     }
+    
+    return true;
   }
 
   // Lấy tất cả logs (cho admin/manager)
   static async getAll() {
-    const query = `
-      SELECT 
-        pl.log_id,
-        pl.user_id,
-        pl.spot_id,
-        pl.entry_time,
-        pl.exit_time,
-        pl.total_minutes,
-        pl.fee,
-        pl.status,
-        ps.spot_number,
-        pkl.name as parking_lot_name,
-        pkl.address as parking_lot_address,
-        u.full_name as user_name,
-        u.license_plate,
-        p.payment_id,
-        p.amount as paid_amount,
-        p.method as payment_method,
-        p.paid_at
-      FROM parking_logs pl
-      LEFT JOIN parking_spots ps ON pl.spot_id = ps.spot_id
-      LEFT JOIN parking_lots pkl ON ps.lot_id = pkl.lot_id
-      LEFT JOIN users u ON pl.user_id = u.user_id
-      LEFT JOIN payments p ON pl.log_id = p.log_id
-      ORDER BY pl.entry_time DESC
-    `;
+    if (!supabase) {
+      throw new Error('Supabase not connected');
+    }
     
-    try {
-      const [rows] = await db.execute(query);
-      return rows;
-    } catch (error) {
+    const { data, error } = await supabase
+      .from('parking_logs')
+      .select(`
+        log_id,
+        user_id,
+        spot_id,
+        entry_time,
+        exit_time,
+        total_minutes,
+        fee,
+        status,
+        parking_spots (
+          spot_number,
+          parking_lots (
+            name,
+            address
+          )
+        ),
+        users (
+          full_name,
+          license_plate
+        )
+      `)
+      .order('entry_time', { ascending: false });
+    
+    if (error) {
       throw error;
     }
+    
+    return data;
   }
 
   // Lấy logs theo bãi đỗ xe
   static async getByParkingLot(lotId) {
-    const query = `
-      SELECT 
-        pl.log_id,
-        pl.user_id,
-        pl.spot_id,
-        pl.entry_time,
-        pl.exit_time,
-        pl.total_minutes,
-        pl.fee,
-        pl.status,
-        ps.spot_number,
-        pkl.name as parking_lot_name,
-        pkl.address as parking_lot_address,
-        u.full_name as user_name,
-        u.license_plate,
-        p.payment_id,
-        p.amount as paid_amount,
-        p.method as payment_method,
-        p.paid_at
-      FROM parking_logs pl
-      LEFT JOIN parking_spots ps ON pl.spot_id = ps.spot_id
-      LEFT JOIN parking_lots pkl ON ps.lot_id = pkl.lot_id
-      LEFT JOIN users u ON pl.user_id = u.user_id
-      LEFT JOIN payments p ON pl.log_id = p.log_id
-      WHERE pkl.lot_id = ?
-      ORDER BY pl.entry_time DESC
-    `;
+    if (!supabase) {
+      throw new Error('Supabase not connected');
+    }
     
-    try {
-      const [rows] = await db.execute(query, [lotId]);
-      return rows;
-    } catch (error) {
+    const { data, error } = await supabase
+      .from('parking_logs')
+      .select(`
+        log_id,
+        user_id,
+        spot_id,
+        entry_time,
+        exit_time,
+        total_minutes,
+        fee,
+        status,
+        parking_spots (
+          spot_number,
+          parking_lots!inner (
+            lot_id,
+            name,
+            address
+          )
+        ),
+        users (
+          full_name,
+          license_plate
+        )
+      `)
+      .eq('parking_spots.parking_lots.lot_id', lotId)
+      .order('entry_time', { ascending: false });
+    
+    if (error) {
       throw error;
     }
+    
+    return data;
+  }
+
+  // Lấy log đang hoạt động của user (chưa ra bãi)
+  static async getActiveByUserId(userId) {
+    if (!supabase) {
+      throw new Error('Supabase not connected');
+    }
+    
+    const { data, error } = await supabase
+      .from('parking_logs')
+      .select(`
+        log_id,
+        user_id,
+        spot_id,
+        entry_time,
+        exit_time,
+        total_minutes,
+        fee,
+        status,
+        parking_spots (
+          spot_number,
+          parking_lots (
+            name,
+            address
+          )
+        )
+      `)
+      .eq('user_id', userId)
+      .eq('status', 'in')
+      .order('entry_time', { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') {
+      throw error;
+    }
+    
+    return data;
+  }
+
+  // Xác nhận xe đã vào slot
+  static async confirmEntry(logId) {
+    if (!supabase) {
+      throw new Error('Supabase not connected');
+    }
+    
+    const { error } = await supabase
+      .from('parking_logs')
+      .update({
+        status: 'confirmed',
+        updated_at: new Date().toISOString()
+      })
+      .eq('log_id', logId)
+      .eq('status', 'in');
+    
+    if (error) {
+      throw error;
+    }
+    
+    return true;
   }
 }
 
 module.exports = ParkingLog;
-

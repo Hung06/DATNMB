@@ -1,39 +1,29 @@
-// Parking API with real data from Supabase
+// Parking API with MySQL database
 const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
+require('dotenv').config();
 
 const app = express();
+
+// Import database models
+const UserModel = require('./models/UserModel');
+const ParkingLot = require('./models/ParkingLotModel');
+const ParkingSpot = require('./models/ParkingSpotModel');
+const ParkingLog = require('./models/ParkingLogModel');
+const Reservation = require('./models/ReservationModel');
+const ManagerBankAccount = require('./models/ManagerBankAccountModel');
 
 // Utility function để tạo thời gian chính xác cho database
 function getCurrentTimeForDB() {
   const now = new Date();
-  // Format: YYYY-MM-DD HH:MM:SS (PostgreSQL compatible)
+  // Format: YYYY-MM-DD HH:MM:SS (MySQL compatible)
   return now.toISOString().slice(0, 19).replace('T', ' ');
 }
 
 // Utility function để tạo timestamp ISO cho API responses
 function getCurrentTimestamp() {
   return new Date().toISOString();
-}
-
-// Try to load environment variables
-let supabase = null;
-try {
-  const { createClient } = require('@supabase/supabase-js');
-  require('dotenv').config();
-  
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_ANON_KEY;
-  
-  if (supabaseUrl && supabaseKey) {
-    supabase = createClient(supabaseUrl, supabaseKey);
-    console.log('✅ Supabase connected successfully');
-  } else {
-    console.log('⚠️ Supabase credentials not found, using mock data');
-  }
-} catch (error) {
-  console.log('⚠️ Supabase connection failed, using mock data:', error.message);
 }
 
 // Middleware
@@ -46,7 +36,7 @@ app.get('/', (req, res) => {
     message: 'Parking API is working!',
     status: 'ok',
     timestamp: getCurrentTimestamp(),
-    database: supabase ? 'Supabase PostgreSQL' : 'Mock Data'
+    database: 'MySQL'
   });
 });
 
@@ -54,7 +44,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     message: 'Health check OK',
     status: 'ok',
-    database: supabase ? 'Connected to Supabase' : 'Mock Data Mode'
+    database: 'Connected to MySQL'
   });
 });
 
@@ -82,15 +72,22 @@ app.get('/api/parking-lots', async (req, res) => {
 
       // Transform data to match frontend expectations
       const transformedData = await Promise.all(data.map(async (lot) => {
-        // Get available spots count for this lot (not occupied AND not reserved)
-        const { count: availableCount } = await supabase
+        // Get available spots count for this lot
+        const { count: occupiedCount } = await supabase
           .from('parking_spots')
           .select('*', { count: 'exact', head: true })
           .eq('lot_id', lot.lot_id)
-          .eq('is_occupied', false)
-          .eq('is_reserved', false);
+          .eq('is_occupied', true);
 
-        const availableSpots = availableCount || 0;
+        const { count: reservedCount } = await supabase
+          .from('parking_spots')
+          .select('*', { count: 'exact', head: true })
+          .eq('lot_id', lot.lot_id)
+          .eq('is_reserved', true);
+
+        const occupied = occupiedCount || 0;
+        const reserved = reservedCount || 0;
+        const availableSpots = lot.total_spots - occupied - reserved;
 
         return {
           id: lot.lot_id,
@@ -2681,7 +2678,7 @@ app.post('/api/fix-payment-data', async (req, res) => {
   }
 });
 
-// License Plate Recognition Routes
+// License Plate Recognition routes
 const licensePlateRoutes = require('./routes/licensePlateRoutes');
 app.use('/api/license-plate', licensePlateRoutes);
 
@@ -2694,14 +2691,5 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server for local development
-if (require.main === module) {
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`📱 Health check: http://localhost:${PORT}/api/health`);
-    console.log(`🔍 License Plate API: http://localhost:${PORT}/api/license-plate/`);
-  });
-}
-
 module.exports = app;
+
